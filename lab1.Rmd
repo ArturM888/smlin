@@ -1,0 +1,85 @@
+---
+title: "lab1"
+author: "Artur Moczybroda"
+date: "7 03 2020"
+output: html_document
+---
+
+```{r warning=FALSE, echo=FALSE,message=FALSE}
+library(tidyverse)
+library(stargazer)
+library(knitr)
+library(kableExtra)
+```
+
+## Pierwszy model regersji
+
+Modele w języki `R` budujemy za pomocą funkcji `lm`. Przykładowo jeśli chcemy zbadać jaka jest zależość spalania od ciężaru auta, to
+
+```{r}
+#y~x
+mod <- lm(mpg ~ wt, data = mtcars)
+mod
+```
+
+```{r}
+summary(mod)
+```
+
+### Interpretacja modelu
+
+- Estymowawany model postaci
+$$mpg = \beta_0+\beta_1 \cdot wt +\varepsilon,$$
+gdzie `mpg` oznacza spalanie auta (mile na galon), `wt` oznacza ciężar auta, $\varepsilon$ jest błędem modelu, który powinien spełniać założenia twierdzenia Gaussa-Markova
+
+- Próbkowy błąd standardowy estymacji ($s$), który jest oszacowaniem prawdziwego błędu standardowego estymacji ($\sigma$), wynosi 3.046. Odnosząc tą statystykę do średniej wartości zmiennej zależnej, możemy powiedzieć, że zmienność modelu jest na niskim poziomie (`summary(mod)$sigma/mean(mtcars$mpg)`).
+
+```{r}
+#zmienność modelu w %
+#0-30 mała
+#30-70 średnia
+#pow 70 duża
+```
+
+- $R^2$ (współczynnik determinacji) dla naszego modelu wynosi około 75%, co oznacza, że 75% zmienności `mpg` da się wyjaśnić za pomocą zmienności `wt`. Skorygowany $\tilde{R}^2$ jest tylko nieco mniejszy.
+
+```{r}
+#jeśli różnica miedzy r^2 a r^2 skor jest duża to patrzymy na r^2 skor
+#w pp patrzymy na r^2
+```
+
+- Test $F$ (test Chowa) weryfikuje hipotezę, że $H_0: \beta_1=0$ (`wt` nie ma wpływu na `mpg`). W naszym przypadku statystyka $F$ wynosi 91.38, a $p=1.29*10^{-10}$, czyli należy odrzucić hipotezę $H_0$ na korzyść hipotezy alternatywnej $H_1: \beta_1 \neq 0$.
+
+```{r}
+#p<alfa odrzucamy h0
+#w pp nie ma podstaw do odrzucenia h0
+
+#w tabelce coefficients
+#tvalue
+#weryfikuje B0=0, B1=0
+#t^2=F
+```
+
+- Wyestymowany model jest postaci
+
+$$\widehat{mpg}= \hat{\beta_0}+\hat{\beta_1}\cdot wt$$
+
+gdzie $\hat{\beta}_0= 37.29$, a $\hat{\beta_1}= -5.34$. Statystyki te mają błędy standardowe estymacji na poziomie odpowiednio 1.88 i 0.56. Oba parametry są istotne statystycznie.
+
+- Testy Walda ($t$) weryfikują hipotezy, że $H_0: \beta_i=0$.
+
+###Interpretacja parametrów modelu
+
+-Parametr nachylenia wynosi -5.34, co oznacza, że jeśli waga auta wzrośnie o 1 jednostkę, to spalanie wzrośnie (`mpg` zmaleje) o 5.34 jednostek.
+
+- Parametr przesunięcia, który wynosi 37.29 interpretujemy tak, że jeżeli waga auta byłaby na poziomie 0, to spalanie wynosiłoby 37.29.
+
+###Ilustracja modelu
+
+```{r}
+mtcars %>% 
+  ggplot(aes(x = wt, y = mpg))+
+  geom_point(color = "red")+
+  geom_smooth(method = lm)
+```
+
