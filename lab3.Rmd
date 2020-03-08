@@ -1,0 +1,179 @@
+---
+title: "lab3"
+author: "Artur Moczybroda"
+date: "8 03 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r}
+library(knitr)
+kable(head(swiss))
+```
+
+##Macierz korelacji
+
+```{r}
+r <- cor(swiss)
+kable(r, digits = 2)
+library(ggcorrplot)
+p <- cor_pmat(swiss)
+ggcorrplot(r, type = 'upper', lab = T, p.mat = p)
+```
+
+## Model wstępujący
+
+Model tylko z wyrazem wolnym:
+
+```{r}
+mod0 <- lm(Fertility~1, swiss)
+summary(mod0)
+```
+
+Model zależny od jednej zmiennej, `Education`:
+
+```{r}
+mod1 <- update(mod0, .~.+Education, swiss)
+summary(mod1)
+```
+
+$\beta_0 = 79.61$, $\beta_1 = -0.86$, oba parametry są istotne statystycznie.
+
+$R^2$ wynosi 0.44, zatem 44% zmienności zmiennej zależnej `Fertility` jest wyjaśniona przez zmienność `Education`.
+
+Test anova:
+
+```{r}
+anova(mod0, mod1)
+
+```
+
+Modele istotnie różnią się od siebie. Wybieramy model `mod1`.
+
+Dodajemy zmienną `Examination`
+
+```{r}
+mod2 <- update(mod1, .~.+Examination, swiss)
+summary(mod2)
+anova(mod1, mod2)
+car::vif(mod2)
+```
+
+Zmienna `Examination` istotnie wpływa na model.
+
+Dodajemy zmienną `Catholic`.
+
+```{r}
+mod3 <- update(mod2, .~.+Catholic, swiss)
+summary(mod3)
+```
+
+Współczynnik przy `Examination` jest teraz nieistotny statystycznie.
+
+Test `vif`.
+
+```{r}
+car::vif(mod3)
+```
+
+Dodanie zmiennej `Catholic` powoduje nieistotność zmiennej `Examination`.
+
+Tworzymy model ze zmiennymi `Education` i `Catholic`.
+
+```{r}
+mod4 <- lm(Fertility~Education+Catholic, swiss)
+summary(mod4)
+anova(mod1, mod4)
+```
+
+$R^2$ = 0.57
+
+Model `Education` i `Examination`
+
+```{r}
+mod5 <- lm(Fertility~Education+Examination, swiss)
+summary(mod5)
+```
+
+$R^2$ = 0.51
+
+Wybieramy model `Education` i `Catholic`.
+
+Dodajemy `Infant Mortality`.
+
+```{r}
+mod6 <- update(mod4, .~.+Infant.Mortality, swiss)
+summary(mod6)
+anova(mod4, mod6)
+```
+
+Modele różnią się istotnie. Dołączamy zmienną `Infant Mortality`.
+
+Na koniec dodajemy zmienną `Agriculture`.
+
+```{r}
+mod7 <- update(mod6, .~.+Agriculture, swiss)
+summary(mod7)
+anova(mod6, mod7)
+```
+
+Dodanie `Agriculture` poprawia model.
+
+Sprawdzimy jeszcze raz dodanie `Examination`.
+
+```{r}
+mod8 <- update(mod7, .~.+Examination, swiss)
+summary(mod8)
+anova(mod7, mod8)
+```
+
+`Examination` nie poprawia modelu.
+A więc MOD7 to ostateczny model.
+
+
+```{r}
+library(leaps)
+reg <- regsubsets(Fertility ~ ., data = swiss, method = "forward")
+wyniki <- summary(reg)
+wyniki$adjr2 #adjusted r2
+```
+
+W funkcji `regsubsets`:
+
+- `force.in` - zmienna musi być w modelu
+
+- `force.out` - zmienna nie może być w modelu
+
+- buduje modele z jedną zmienną - wybiera najlepszy
+
+- buduje modele z dwoma zmiennymi - wybiera najlepszy itd
+
+Statystyki $\hat{R^2}$, AIC, BIC, Cp, RSS, zależą od RSS i p (l. zm. w modelu)
+`regsubsets` optymalizuje ze względu na RSS i p.
+
+Nie pokazuje, który model jest najlepszy, tylko pokazuje kolejne etapy dodawania zmiennych.
+
+Patrzymy na `adjusted r2`. Znowu widzimy, że `Examination` nie poprawia modelu.
+
+```{r, results = 'asis'}
+mod1 <- lm(Fertility ~ Education, swiss)
+mod2 <- update(mod1, .~.+Catholic, swiss)
+mod3 <- update(mod2, .~.+Infant.Mortality, swiss)
+mod4 <- update(mod3, .~.+Agriculture, swiss)
+mod5 <- update(mod4, .~.+Examination, swiss)
+library(stargazer)
+stargazer(mod1, mod2, mod3, mod4, mod5)
+```
+
+
+Jako optymalny wybraliśmy model 4.
+
+```{r}
+#stepwise function
+step(lm(Fertility~1, swiss),  scope = ~ Education+Catholic+Infant.Mortality+Agriculture+Examination,  direction = "forward", test = "F")
+```
+
+Dodaje tą zmienną gdzie statystyka F jest największa. Maleje Akaike.
