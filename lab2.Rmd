@@ -1,0 +1,166 @@
+---
+title: "lab2"
+author: "Artur Moczybroda"
+date: "8 03 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+## Regresja wieloraka
+
+```{r}
+head(LifeCycleSavings)
+str(LifeCycleSavings)
+```
+
+Zmienne w modelu:
+
+- `sr` - poziom oszczędności (zmienna zależna)
+- `pop15` - odsetek osób w wieku poniżej 15 roku życia
+- `pop75` - odsetek osób w wieku powyżej 75 roku życia
+- `dpi` - dochód rozporządzalny brutto (po odjęciu stałych wydatków)
+- `ddpi` - wzrost dochodu rozporządzalnego brutto
+
+Celem budowy modelu jest odkrycie zmiennych mających istotny wpływ na poziom oszczędności.
+
+## Macierz korelacji
+
+```{r}
+r <- cor(LifeCycleSavings)
+library(ggcorrplot)
+p <- cor_pmat(LifeCycleSavings)
+ggcorrplot(r, lab = T, p.mat = p)
+```
+
+Najsilniej skorelowana z `sr` jest zmienna `pop15`, co można interpretować jako silny związek pomiędzy średnim wiekiem społeczeństwa a poziomem oszczędności. Kraje o niższej przeciętnej wieku charakteryzują się mniejszym poziomem oszczędności. Przeciwną korelację z `sr` wykazuje `pop75` co jest powodowane podobnym zjawiskiem jak opisane wyżej. Wzrost dochodu rozporządzalnego brutto (`ddpi`) jest skorelowany z `sr` na poziomie 0.3, co może być spowodowane faktem większego budżetu osób zamieszkujących dany kraj. 
+
+Silna korelacja pomiędzy `pop15` i `pop75` może powodować nadmiarowość.
+
+###Budowa modelu
+
+Będziemy budować model wstępujący
+
+```{r}
+mod0 <- lm(sr~1, LifeCycleSavings)
+mod1 <- lm(sr~pop15, LifeCycleSavings)
+anova(mod0, mod1)
+```
+
+Test ANOVA pokazał istotność różnicy pomiędzy modelami, co oznacza, że model bardziej złożony jest lepszy.
+
+```{r}
+summary(mod1)
+#residual standard error 4.03
+4.03/mean(LifeCycleSavings$sr) #ok 42%
+```
+
+Zmienność naszego modelu wyrażona stosunkiem błędu standardowego estymacji do średniej zmiennej zależnej jest średnia/przeciętna.
+
+Około 21% zmienności zmiennej zależnej `sr` da się wyjaśnić za pomocą modelu (czyli za pomocą `pop15`).
+
+Skorygowany $R^2$ jest zbliżony do $R^2$, więc interpretujemy samo $R^2$.
+
+F-statistic <-> test omnibus
+
+W coefficients - test Walda (t value)
+
+Wyraz wolny (intercept) nie jest 0.
+
+$\beta_1 \neq 0$
+
+Jeśli `pop15` wzrośnie o 1, `sr` zmaleje o 0.22.
+
+sr = 17.5-0.22pop15
+
+Poziom wyjaśnionej wariancji przez model wynosi blisko 21%. Statystyka F jest istotna statystycznie, co oznacza, że należy odrzucić hipotezę $H_0: \beta_1 = 0$. Zatem istnieje istotny wpływ zmiennej `pop15` na `sr`. Jeśli odniesiemy błąd standardowy estymacji do przeciętnej wartości zmiennej zależnej, to okaże się, że zmienność modelu jest średnia. Oba parametry modelu są istotne statystycznie, czyli są różne od 0. Ponieważ $\hat{\beta}_1 = 0.22$, to wraz ze wzrostem `pop15` o 1, `sr` maleje o 0.22.
+
+W kolejnym kroku dodajemy zmienną `pop75`.
+
+```{r}
+mod2 <- update(mod1, .~.+pop75)
+anova(mod1, mod2)
+```
+
+Dodanie zmiennej `pop75` nie poprawiło modelu. Prawdopodobną przyczyną tego faktu jest nadmiarowość zmiennych `pop15` i `pop75`.
+
+```{r}
+#alternatywnie library(car); vif(mod2)
+car::vif(mod2) #variance inflate factor, mierzy nadmiarowość
+#vif>10 zmienne są tak silnie nadmiarowe, że koniecznie usuwamy
+#vif>5 zmienne są nadmiarowe, ale decyzję o usunięciu opieramy też o parametry istotności
+```
+
+Bazując na macierzy korelacji oraz funkcji `vif` możemy stwierdzić nadmiarowość `pop15` i `pop75`. Zatem usuwamy zmienną `pop75` z modelu.
+
+W kolejnym kroku dodamy zmienną `ddpi` do modelu `mod1`.
+
+```{r}
+mod3 <- update(mod1, .~.+ddpi)
+summary(mod3)
+anova(mod1, mod3)
+```
+
+Istnieje istotna różnica między modelami. Zatem model `mod3` jest lepszy.
+
+29% zmienności zmiennej zależnej jest wyjaśniane przez model.
+
+$sr = \beta_0 + \beta_1 pop15 + \beta_2 ddpi$
+
+TestF:
+
+$H_0: \beta_1 = 0, \beta_2 = 0$
+
+Odrzucamy $H_0$
+
+Coefficients: odrzucamy $H_0$ w każdym przypadku, wszystkie są istotne statystycznie.
+
+`mod3` jest modelem regresji wielorakiej.
+
+Wzrost `ddpi` o 1 przy stałym poziomie pozostałych zmiennych powoduje wzrost `sr` o 0.44.
+
+Ponieważ $\hat{\beta}_2=0.44$, to wzrost `ddpi` o jedną jednostkę przy jednoczesnym zachowaniu pozostałych zmiennych na tym samym poziomie będzie skutkował wzrostem `sr` o 0.44.
+
+Sprawdzenie nadmiarowości
+```{r}
+car::vif(mod3)
+```
+
+Nie ma nadmiarowości.
+
+W ostatnim kroku dodamy `dpi`.
+
+```{r}
+mod4 <- update(mod3, .~.+dpi)
+summary(mod4)
+anova(mod3, mod4)
+```
+
+Ponieważ dodanie `dpi` okazało się nieistotne, to ostatecznym modelem jest model `mod3`.
+
+
+Budowa modelu zstępującego
+```{r}
+mod_full <- lm(sr~., LifeCycleSavings) #kropka - włącz wszystkie zmienne jako niezależne
+anova(mod_full, mod0)
+summary(mod_full)
+```
+
+Ponieważ p dla `dpi` jest największe to usuwamy tą zmienną z modelu.
+
+```{r}
+mod_bez_dpi <- update(mod_full, .~.-dpi)
+anova(mod_bez_dpi, mod_full)
+#modele nie różnią się istotnie, więc wybieramy prostszy
+summary(mod_bez_dpi)
+```
+
+Ponieważ modele nie różnią się istotnie statystycznie, to model prostszy jest lepszy.
+
+Teraz można usunąć `pop75`, ponieważ powoduje nadmiarowość.
+```{r}
+car::vif(mod_bez_dpi)
+```
+
