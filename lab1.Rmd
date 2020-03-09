@@ -1,8 +1,12 @@
 ---
 title: "lab1"
 author: "Artur Moczybroda"
-date: "7 03 2020"
-output: html_document
+date: "28 01 2020"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
 ---
 
 ```{r warning=FALSE, echo=FALSE,message=FALSE}
