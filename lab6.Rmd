@@ -1,0 +1,180 @@
+---
+title: "lab6"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+
+```{r results='asis'}
+library(alr3)
+library(stargazer)
+cleaning <- read.table("E:\\Arti\\majerek\\moje\\cleaningwtd.txt", header=T)
+stargazer(head(cleaning), type="html")
+```
+
+## Ważona metoda najmniejszych kwadratóW
+
+Zbudujmy model regresji liniowej bez uwzględniania wag.
+```{r}
+mod.lm <- lm(Rooms~Crews, data=cleaning)
+summary(mod.lm)
+```
+
+Problem dla tego modelu to heterogeniczność wariancji reszt.
+
+```{r}
+library(tidyverse)
+cleaning%>%
+  ggplot(aes(x=Crews, y=Rooms))+
+  geom_point()+
+  geom_smooth(method=lm, color="red")
+```
+
+```{r}
+library(broom)
+augment(mod.lm) %>%
+  ggplot(aes(x=.fitted, y=.resid))+
+  geom_point()+
+  geom_hline(yintercept=0)
+```
+
+Potwierdzeniem heterogeniczności wariancji są powyższe wykresy oraz testy istotności dla jednorodności wariancji.
+
+```{r}
+library(lmtest)
+bptest(mod.lm)
+```
+
+W związku z powyższyn estymacji modelu dokonamy metodą WLS.
+
+```{r}
+mod.wls <- lm(Rooms~Crews, data=cleaning, weights=1/StdDev)
+summary(mod.wls)
+```
+
+```{r}
+plot(mod.wls)
+car::ncvTest(mod.wls)
+```
+
+Ważenie obserwacji za pomocą odwrotności odchylenia standardowego okazało się zbyt małe.
+
+```{r}
+mod.wls2 <- lm(Rooms~Crews, data=cleaning, weights = 1/StdDev^2)
+summary(mod.wls2)
+```
+
+```{r}
+plot(mod.wls2)
+ncvTest(mod.wls2)
+```
+
+Chcemy narysować wykres modelu liniowego i drugiego modelu wls na jednym rysunku.
+
+```{r}
+cleaning%>%
+ggplot(aes(x=Crews, y=Rooms))+
+  geom_point()+
+  geom_smooth(method=lm,
+              se=F)+
+  geom_smooth(method = lm,
+              se = F,
+              mapping = aes(weight=(1/StdDev^2)),
+              color="red")
+```
+
+```{r results='asis'}
+stargazer(mod.lm, mod.wls2, header = F, type="html")
+```
+
+Dopasowaliśmy mniej więcej ten sam model tylko z lepszymi szacunkami na błędy, więc nie powinniśmy się sugerować zwiększeniem $R^2$. 
+
+##FWS Feasible Generalized Least Squares
+
+```{r}
+reszty <- resid(mod.lm)
+mod.pomocniczy <- lm(log(reszty^2)~Crews, data=cleaning)
+summary(mod.pomocniczy)
+```
+
+Faktycznie reszty da się opisać predyktorem `Crews`.
+
+```{r}
+odpowiedzi.mod <- fitted.values(mod.pomocniczy) #robi wektor danych fitted dałoby ramkę
+h <- exp(odpowiedzi.mod)
+```
+
+```{r}
+mod.fwls <- lm(Rooms~Crews, data=cleaning, weights=1/h)
+summary(mod.fwls)
+```
+
+
+```{r}
+cleaning%>%
+ggplot(aes(x=Crews, y=Rooms))+
+  geom_point()+
+  geom_smooth(method=lm,
+              se=F,
+              size=0.3)+
+  geom_smooth(method = lm,
+              se = F,
+              mapping = aes(weight=(1/StdDev^2)),
+              color="red",
+              size=0.3)+
+  geom_smooth(method = lm,
+              se = F,
+              mapping = aes(weight=(1/h)),
+              color="green",
+              size=0.3)
+```
+
+```{r results="asis"}
+stargazer(mod.lm, mod.wls2, mod.fwls, 
+          header=F, 
+          type="html")
+```
+
+Odrobinę wzrósł błąd standardowy estymacji, na dopasowanie nie patrzymy.
+
+## Odporne oszacowania estymatorów błędów standardowych White'a
+
+```{r}
+library(sandwich)
+white_est <- hccm(mod.lm, type="hc0")
+```
+
+Jest to macierz kowariancji, którą trzeba włączyć do modelu.
+
+```{r}
+mod.hc0 <- coeftest(mod.lm, vcov. = white_est)
+mod.hc0
+```
+
+Same parametry są takie same, bo estymowaliśmy model `lm`, ale zmieniły sie błędy standardowe estymacji, zatem nie ma sensu go rysować.
+
+```{r results="asis"}
+stargazer(mod.lm, mod.wls2, mod.fwls, mod.hc0,
+          type="html",
+          header=F, 
+          column.labels = c("OLS", "WLS", "FWLS","HC0"),
+          model.names = F,
+          model.numbers = F)
+```
+
+Miary dopasowania nie wyświetli, bo w `coeftest` tego nie ma.
+
+##Podsumowanie
+
+Zamiast `hc0` możemy przyjąć inne poprawki, domyślnie `hccm` daje `hc3` czyli korektę Longa i Ervina.
+
+##Praca domowa
+
+Na zbiorze `fpe` z biblioteki `faraway` modeluj obiekt A2 za pomocą A, B, C, D, E, F, G, H, J, K, N-1, (-1 czyli bez wyrazu wolnego) (książka Linear Models with R - Faraway). Wagi ustalamy jako 1/EI.  Następnie metoda Feasible i metodę z wybraną korektą hc (dowolna poprawka).
