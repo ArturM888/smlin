@@ -1,0 +1,175 @@
+---
+title: "lab5"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F)
+```
+
+## Zadanie 1
+
+Na podstawie danych ze zbioru `Prestige` pakietu `alr3` zbuduj model regresji wyrażający zależność pomiędzy zmiennymi `income` i `prestige`.
+
+```{r results = 'asis'}
+library(alr3)
+library(tidyverse) #ggplot, pipe'y
+library(stargazer)
+library(kableExtra)
+stargazer(Prestige, type = "html", column.sep.width = "40pt") #tak sie definiuje tabele w html. musi byc asis
+```
+
+```{r}
+Prestige %>%
+  ggplot(aes(x = income, y = prestige))+
+  geom_point()+
+  geom_smooth(se = F)+ #nieparametryczna
+  geom_smooth(method = lm, color = "red", se = F) #parametryczna
+```
+
+```{r results = 'asis'}
+mod <- lm(prestige~income, Prestige)
+#stargazer jest zamiast summary bo lepiej wyglada
+stargazer(mod, type = "html", header = F)
+```
+
+```{r}
+plot(mod)
+lambda <- 2*(1+1)/nrow(Prestige)
+abline(v = lambda)
+```
+
+być może seryjna korelacja
+
+może nie być normalności reszt
+
+nie widać heterogeniczności (tendencji wzrostowej ani spadkowej) - raczej ok
+
+general managers może być wpływowa (ale nie jest to wina obserwacji tylko złego dopasowania modelu)
+
+```{r}
+library(lmtest)
+shapiro.test(resid(mod))
+bptest(mod)
+gqtest(mod, order.by = ~fitted(mod))
+hmctest(mod, order.by=~fitted(mod))
+```
+
+odrzucamy hipotezę o normalności rozkładu reszt
+
+jednorodność wariancji
+
+`gqtest`, `hmctest` i `hmctest` nie ma podstaw do odrzucenia
+
+`bptest` nie mamy podstaw do odrzucenia hipotezy o jednorodnosci wariancji
+
+```{r}
+dwtest(mod, order.by = ~fitted(mod))
+bgtest(mod, order.by = ~fitted(mod), order = 3)
+resettest(mod, type = "regressor")
+raintest(mod, order.by = ~fitted(mod))
+```
+
+`dw`, `bg` Nie ma podstaw do odrzucenia hipotezy o braku autokorelacji
+
+`reset` odrzuca liniowość, `rainbow` nie odrzuca
+
+Model liniowy nie spełnia założenia o liniowej postaci zależności.
+
+```{r}
+library(car)
+inverseResponsePlot(mod)
+summary(powerTransform(cbind(income)~1, data = Prestige))
+summary(powerTransform(cbind(prestige,income)~1, data = Prestige))
+```
+
+```{r}
+mod2 <- lm(I(prestige^3)~income, data = Prestige)
+summary(mod2)
+Prestige %>% 
+  ggplot(aes(x = income, y = prestige^3))+
+  geom_point()+
+  geom_smooth(method = lm)
+```
+
+RSE duże bo podnieśliśmy do 3ciej potęgi
+
+```{r}
+shapiro.test(resid(mod2))
+```
+
+Odrzucamy hipotezę o normalności reszt.
+
+```{r}
+bgtest(mod2)
+```
+
+Heterogeniczna wariancja reszt - autokorelacja.
+
+Rozwiązanie proponowane przez `inverseResponsePlot` jest niewłaściwe, ponieważ występuje zjawisko heterogeniczności wariancji reszt oraz brak jest normalności reszt.
+
+
+Nowy model
+
+$$\sqrt y = \beta_0+ \beta_1 x^{0.2}+\varepsilon$$
+
+```{r}
+mod3 <- lm(sqrt(prestige)~I(income^0.2), data = Prestige)
+summary(mod3)
+Prestige %>% 
+  ggplot(aes(x = income^0.2, y = sqrt(prestige)))+
+  geom_point()+
+  geom_smooth(method = lm)
+```
+
+RSE nie porównujemy między transformowanymi modelami!!!!
+
+```{r}
+plot(mod3)
+```
+
+Z residuals vs fitted da się odczytać prawie wszystko
+
+Zmienność układa się w "diament" - może ale nie musi być heterogeniczność
+
+normal qq Odstają od linii kwantylowej
+
+na scale-location widać "górkę" - środek o większym rozrzucie, potencjalna heterogeniczność
+
+nie ma mocno odstających punktów
+
+```{r}
+shapiro.test(resid(mod3))
+bptest(mod3)
+gqtest(mod3, order.by = ~fitted(mod3))
+hmctest(mod3, order.by=~fitted(mod3))
+dwtest(mod3, order.by = ~fitted(mod3))
+bgtest(mod3, order.by = ~fitted(mod3), order =3)
+resettest(mod3)
+raintest(mod3, order.by = ~fitted(mod3))
+```
+
+Nie ma podstaw do odrzucenia hipotezy o normalności
+o liniowości też
+
+Wszystkie założenia twierdzenia Gaussa-Markowa oraz normalność reszt zostały spełnione, ponadto liniowa postać zależności dla transformowanych zmiennych jest prawidłowa.
+
+Przeprowadzimy predykcję zmiennej `prestige` dla `income = 7000` wraz z przedziałem ufności dla regresji i predykcji.
+
+```{r}
+predykcja <- predict(mod3, 
+                     newdata = data.frame(income = 7000),
+                     interval = "confidence")
+predykcja^2
+predykcja2 <- predict(mod3,
+                      newdata = data.frame(income = 7000),
+                      interval = "prediction")
+```
+
+Predykcja `prestige` dla `income = 7000` wyniosła około 49. Przedział ufności dla regresji (46.6, 51.3). Natomiast przedział ufności dla predykcji jest dużo szerszy i wynosi (28.4, 75).
+Pamiętać że zmienne były transformowane!!!!!!
