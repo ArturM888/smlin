@@ -1,0 +1,163 @@
+---
+title: "lab7"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+
+```{r}
+library(alr3)
+library(tidyverse)
+help(sleep1)
+head(sleep1)
+```
+
+Zmienne `ts` total sleep, `BodyWt`, `D` danger (odczuwane przez zwierzę zagrożenie)
+
+Hipoteza że jak się czuje zagrożone to śpi krócej
+
+```{r}
+str(sleep1)
+sleep1$D <- as.factor(sleep1$D) #traktujemy jako kategorie
+summary(sleep1) #4 braki danych w TS
+sleep2 <- sleep1 %>%
+  filter(!is.na(TS)) #usuwamy braki z TS
+
+sleep2 %>%
+  ggplot(aes(TS))+
+  geom_histogram(bins = 10) #bins - liczba przedziałów, domyślnie 30
+```
+
+Na histogramie: dwie górki - dwumodalność
+
+```{r}
+sleep2 %>%
+  ggplot(aes(BodyWt))+
+  geom_histogram(bins=10)
+```
+
+Silna asymetria prawostronna, dwa elementy odstające (słonie afrykański i indyjski)
+
+```{r}
+sleep2 %>%
+  ggplot(aes(log(BodyWt)))+
+  geom_histogram(bins = 10)
+```
+
+Przekształcenie logarytmiczne
+
+Zamiast `BodyWt` włączamy `log(BodyWt)`
+
+```{r}
+mod <- aov(TS~log(BodyWt)*D, data = sleep2) #* - efekty brzegowe i efekt interakcji
+summary(mod)
+```
+
+log(BodyWt):D wpływ interakcji czynników na TS (czy D modyfikuje wpływ log(BodyWt) na TS) 
+
+Z powyższego modelu wynika,  że `log(BodyWt)` ma istotny wpływ na `TS`. Istnieje istotny wpływ `D` na `TS`, czyli średnie poziomy `TS` w grupach wyznaczanych przez `D` są istotnie różne. Brak istotności efektu interakcji `log(BodyWt):D`, czyli `D` nie modyfikuje wpływu `log(Body(wt))` na `TS`. Ponieważ efekt interakcji jest nieistotny, to zostanie usunięty z modelu.
+
+```{r}
+mod2 <- update(mod, .~.-log(BodyWt):D)
+summary(mod2)
+summary.lm(mod2)
+```
+
+Interpretacja intercept - przecięcie z osią Y w 13.93
+
+Mamy D2, D3, D4, D5 => grupą referencyjną jest D1
+
+Wtedy wyraz wolny jest interceptem (pktem przecięcia) dla grupy D1
+
+Badamy częściowe efekty/ partial (dla ustalonego poziomu D, jeśli zwiększysz logBodyWt o 1, to TS zmaleje o 0.6287)
+
+Jeżeli jesteśmy w D2, to musimy się przesunąć z interceptem z 13.93 o -2.42
+
+Parametr `Intercept` interpretujemy następująco. Jest to punkt przecięcia z osią OY regresji `log(BodyyWt)` ze zmienną `TS` w grupie `D=1`. Wraz ze wzrostem `log(BodyWt)` o 1 jednostkę `TS` maleje o 0.63.
+
+Parametr `D=2` interpretujemy jako wielkość, o którą należy przesunąć `Intercept` dla ssaków z grupy `D=2`
+
+Ponieważ p-value>0.05 dla `D2`, to nie ma istotnej różnicy między grupą `D2` a grupą referencyjną `D1`.
+
+```{r}
+sleep2 %>%
+  filter(D==1) %>%
+  summarise(mean(TS))
+```
+
+
+```{r}
+library(broom) #augment
+augment(mod2) %>%
+  ggplot(aes(x = log.BodyWt., y = TS, color = D))+
+  geom_point()+
+  geom_smooth(aes(x=log.BodyWt., y = .fitted, color = D), 
+              method = lm, se = F)
+#color = D rozdzielanie kolorami dla poziomów D
+#bierzemy y=.fitted żeby narysować model
+
+```
+
+Mają ten sam współczynnik nachylenia
+
+```{r}
+mod3 <- update(mod2, .~.-1) #usuwamy wyraz wolny
+summary.lm(mod3)
+```
+
+Jeśli usuniemy wyraz wolny, to nie ma czegoś takiego jak grupa referencyjna.
+
+Każda grupa wyznacza intercept w swojej kategorii.
+
+Wcześniej było podane o ile się przesunąć z D1, a teraz po prostu ile wynosi.
+
+```{r}
+compareCoefs(mod2, mod3)
+```
+
+```{r}
+mtcars %>%
+  head()
+```
+ Hipoteza, że istnieją wpływy liczby koni mechanicznych na spalanie, liczby cylindrów na spalanie, oraz interakcje hp i liczby cylindrów, czyli model z efektem interakcji: mpg~hp+cyl+hp*cyl
+
+Liczbę cyl można traktować jako integer, ale do analizy kowariancji potraktujemy jako kategorię.
+
+```{r}
+dane <- mtcars
+dane$cyl <- as.factor(dane$cyl)
+str(dane)
+summary(dane) #nie ma braków
+
+mod <- aov(mpg~hp+cyl+hp*cyl, data = dane)
+summary(mod) #interakcja nie wpływa - nie będzie zmian nachylenia, wpływ hp na mpg nie jest modyfikowany przez cyl
+#przy różnych liczbach cylindrów będą różnice w spalaniu
+mtcars %>%
+  ggplot(aes(x = hp, y = mpg, color = cyl))+
+  geom_point()
+```
+
+```{r}
+mod2 <- aov(mpg~hp+cyl, data = dane)
+summary.lm(mod2)
+```
+
+```{r}
+augment(mod2) %>%
+  ggplot(aes(x = hp, y=mpg, color = cyl))+
+  geom_point()+
+  geom_smooth(aes(x = hp, y=.fitted, color = cyl), method = lm, se=F)+
+  xlim(c(0, 400))
+```
+
+```{r}
+coef(update(mod2, .~.-1))
+```
+
