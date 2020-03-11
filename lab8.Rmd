@@ -1,0 +1,181 @@
+---
+title: "lab8"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+#Analiza wariancji
+
+##Wykresy diagnostyczne
+
+```{r}
+library(faraway)
+head(breaking)
+str(breaking)
+```
+
+Czy jest efekt operatora, efekt suppliera na wytrzymałość.
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+```
+
+Czy `operator` wpływa na `y`
+
+```{r}
+breaking %>%
+  ggboxplot(x = "operator",
+            y = "y",
+            fill = "operator",
+            add = "jitter",
+            palette = "jco")
+```
+
+W każdym jest po 4 obserwacje (ze względu na jitter wygląda jakby w op3 było 5, ale to tylko powielona obserwacja odstająca).
+
+```{r}
+breaking %>%
+  ggbarplot(x = "operator",
+            y = "y",
+            fill = "operator",
+            add = "mean_ci",
+            palette = "aaas")
+
+breaking %>%
+  ggline(x = "operator",
+         y = "y",
+         add = "mean_ci")
+```
+
+
+Z powyższych wykresów można się spodziewać, że czynnik `operator` nie będzie różnicował istotnie cechy `y`.
+
+Teraz to samo dla zmiennej `supplier`.
+
+```{r}
+breaking %>%
+  ggboxplot(x = "supplier",
+            y = "y",
+            fill = "supplier",
+            add = "jitter")
+
+breaking %>%
+  ggbarplot(x = "supplier",
+            y = "y",
+            fill = "supplier",
+            add = "mean_ci")
+
+breaking %>%
+  ggline(x = "supplier",
+         y = "y",
+         add = "mean_ci")
+```
+
+Z powyższych rysunków wynika, że `supplier` ma istotny wpływ na `y`.
+
+## Założenia
+
+Dwuczynnikowa analiza wariancji (czynniki `supplier`, `operator`) zmienna zależna `y`.
+
+```{r}
+breaking %>%
+  count(operator)
+breaking%>%
+  count(supplier)
+breaking %>%
+  group_split(operator) %>%
+  map(~shapiro.test(.x$y)) %>%
+  map_dbl("p.value") #wyciągamy p value
+#tak naprawdę to shapiro nie ma sensu bo za mało obserwacji
+#breaking%>%
+#  group_nest(operator)
+#map(.x, .f) <=> .f(.x)
+#u nas jest map(lista, ~shapiro)
+```
+ `group_split` dzieli na podgrupy które są typu `data.frame` (`tibble`), ALE ta funkcja zwraca LISTĘ ramek danych, a nie ramki danych.
+
+Wprawdzie test Shapiro-Wilka nie daje podstaw do odrzucenia hipotezy o normalności rozkładów `y` w podgrupach generowanych przez operator, ale ze względu na małą liczebność próby w podgrupach nie możemy opierać się na wynikach testu.
+
+```{r}
+library(car)
+leveneTest(y~operator, data = breaking)
+leveneTest(y~supplier, data = breaking)
+```
+
+Oba czynniki potencjalnie różnicujące `y` nie powodują heterogeniczności wariancji w podgrupach.
+
+```{r}
+mod <- aov(y~operator*supplier, data = breaking)
+breaking %>%
+  count(operator, supplier)
+summary(mod)
+```
+ Ponieważ liczba replikacji w podziale na `operator` i `supplier` wynosi 1, to nie można oszacować efektów w modelu ANOVA.
+ Jesteśmy zatem zmuszeni do zbudowania modelu z efektami brzegowymi.
+ 
+```{r}
+mod <- aov(y~operator+supplier, data = breaking)
+plot(mod)
+shapiro.test(resid(mod)) #jeżeli wyjdzie normalność reszt, to znaczy że jest też normalność w podgrupach
+```
+ 
+Na postawie wykresów diagnostycznych oraz testu Shapiro-Wilka dla reszt, możemy stwierdzić, że założenie o normalności reszt jest spełnione.
+
+Jeżeli nie ma homogeniczności wariancji, to musimy sprawdzać czy jest korelacja między średnią a wariancją (tendencja wzrostowa, spadkowa).
+
+## Ocena efektów
+
+```{r}
+summary(mod)
+
+#H0: mi op1 = mi op2 = mi op3 = mi op4
+#nie ma podstaw do odrzucenia
+
+
+```
+
+Na podstawie testu ANOVA możemy stwierdzić, że czynnik `operator` nie ma istotnego wpływu na `y`, natomiast `supplier` ma wpływ isotny.
+
+Czas na testy post hoc!
+
+## Testy post-hoc
+
+```{r}
+library(agricolae)
+```
+
+Jeżeli duża liczba porównań, to raczej decydować się na testy konserwatywne. W pp możemy postawić na testy bardziej czułe, bo różnica w błędzie I rodzaju nie będzie aż tak duża.
+
+```{r}
+#mamy równoliczność więc możemy testować HSD i SNK
+HSD.test(mod, "supplier", console = T) #model, zmienna grupująca, console = T aby wyświetlić wynik
+HSD.test(mod, "supplier", console = T, group = F) #wyświetla p value, jeśli przedział (LCL, UCL) zawiera 0, to różnica nie jest istotna
+SNK.test(mod, "supplier", console = T)
+#grupy jednorodne: po uszeregowaniu średnich rosnąco (lub malejąco) porównujemy: 2 czyli sąsiednie, 3 czyli przeskakując jedno, i 4 czyli pierwsza z ostatnią (skrajne z 2, skrajne z 3 itd)
+```
+ Ponieważ test Studentyzowany Newman Keuls jest bardziej czuły niż test Tukey'a, to otrzymaliśmy nieco inne grupy jednorodne. Opierając się na teście SNK, powstały grupy:
+ 
+ - C, D
+ 
+ - D, B
+ 
+ - A
+ 
+ 
+ To jest pełna procedura.
+ 
+```{r}
+kruskal.test(y~supplier, data = breaking)
+```
+ 
