@@ -1,0 +1,186 @@
+---
+title: "lab9"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+tinytex
+pdflatex -> xelatex (global options)
+
+
+```{r}
+library(tidyverse)
+library(datarium)
+library(broom)
+head(anxiety)
+```
+
+## Zadanie 1
+
+Na podstawie danych z zestawu `anxiety` pakietu `datarium` wykonaj analizę kowariancji wraz ze sprawdzeniem założeń. Zmienną zależną będzie `t3` a niezależnymi `t1` oraz `group`. Przed wykonaniem analizy zmień nazwy zmiennych, odpowiednio `pretest = t1` oraz `posttest = t3`.
+
+
+dane <- anxiety %>%
+  select(group, t1, t3) %>%
+  rename(posttest = t3,
+          pretest = t1)
+names(dane)          
+
+```{r}
+colnames(anxiety) <-  c("id", "group", "pretest", "t2", "posttest")
+```
+
+```{r}
+ggplot(aes(x = pretest, y = posttest, color = group), data = anxiety)+
+  geom_point()+
+  geom_smooth(method = lm, se = F)
+```
+
+Patrzymy na razie czy jest zależność. Wygląda na to że jest, i jest liniowa.
+
+Równoległość => interakcji nie będzie
+
+Zmienna group ma istotny wpływ na średni poziom zaniepokojenia
+
+
+
+
+
+## Analiza kowariancji
+
+```{r}
+mod <- aov(posttest~pretest+group + pretest*group, data = anxiety)
+summary(mod)
+```
+
+Nie ma interakcji.
+
+```{r}
+anxiety %>%
+  ggplot(aes(x = pretest, y = posttest, color = group))+
+  geom_point()
+```
+
+```{r}
+mod2 <- update(mod, .~. - pretest:group)
+
+
+```
+
+
+### Założenia
+
+```{r}
+plot(mod2) #whoch = 2 zeby sam wykres kwantylowy
+lmtest::raintest(mod2, order.by=~fitted(mod2)) #0.056, po bandzie
+lmtest::resettest(mod2, power = 3, type = "regressor") #git, jest liniowa
+shapiro.test(anxiety$pretest) #normalne
+shapiro.test(anxiety$posttest) #normalne
+shapiro.test(resid(mod2)) #nie ma podst do odrzucenia normalnosci
+car::leveneTest(posttest~group, data = anxiety, center = "mean") #nie ma podst do odrzucenia homogenicznosci
+lmtest::bptest(mod2)
+lmtest::bgtest(mod2, order.by = ~fitted(mod2), order = 3) #brak seryjnej korelacji reszt
+
+anxiety%>%
+  count(group) #jest po 15 w podgrupach
+
+anxiety %>%
+  group_split(group) %>%
+  map(~shapiro.test(.x$posttest)) %>%
+  map_dbl("p.value")  #jest normalnosc w kazdej podgrupie
+
+```
+
+Wystarczy: Levene i Shapiro dla reszt
+
+```{r}
+summary(mod2)
+summary.lm(mod2)
+anova(mod2)
+anova(mod, mod2) #roznica nieistotna statystycznie
+```
+
+wsp kierunkowy 0.98
+intercept dla gr1 -0.35 (nieistotny statystycznie), dla gr2 przesunięty o -0.54, dla gr3 przesunięty o -2.87 (istotne statystycznie)
+
+```{r}
+augment(mod2) %>%
+  ggplot(aes(x = pretest, y = posttest, color = group))+
+  geom_point()+
+  geom_smooth(aes(x=pretest, y = .fitted, color = group), 
+              method = lm, se = F)
+```
+
+
+```{r}
+mod3 <- update(mod2, .~.-1)
+summary.lm(mod3)
+
+
+```
+
+Dla gr1 i gr2 wychodzi intercept nieistotny statystycznie, dla gr3 wychodzi -3.22 istotny statystycznie.
+
+```{r}
+anova(mod2) #test sekwencyjny. jezeli uklad jest zbalansowany to nie ma znaczenia kolejnosc podawania zmiennych w mod2, ale w pp moze zmienic wynik!!
+```
+
+
+
+## Zadanie 2
+
+Na podstawie danych ze zbioru `corrosion` z pakietu `faraway` zbuduj model regresji.
+
+```{r}
+library(faraway)
+head(corrosion)
+
+corrosion %>%
+  ggplot(aes(Fe, loss))+
+  geom_point()+
+  geom_smooth(method = lm, se = F)
+
+mod <- lm(loss~Fe, data = corrosion)
+summary(mod)
+```
+
+```{r}
+library(ggfortify)
+autoplot(mod)
+```
+ 
+Wykres residuals vs fitted - podejrzewamy zla specyfikacje modelu
+
+```{r}
+library(lmtest)
+dwtest(mod, order.by = ~fitted(mod))
+```
+
+Nie ma autokorelacji wg durbina-watsona
+
+```{r}
+bgtest(mod, order = 3, order.by = ~fitted(mod))
+```
+
+```{r}
+bptest(mod)
+```
+
+
+```{r}
+resettest(mod, power = 3)
+```
+
+
+
+```{r}
+#ggplot, formula = y~poly(x, 2) regresja kwadratowa
+```
+
