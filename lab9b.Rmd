@@ -1,0 +1,179 @@
+---
+title: "lab9"
+author: "Dariusz Majerek"
+date: "16 12 2019"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F)
+```
+
+## Zadanie 1
+
+Na podstawie danych z zestawu `anxiety` pakietu `datarium` wykonaj analizę kowariancji wraz ze sprawdzeniem założeń. Zmienną zależną będzie `t3` a niezależnymi `t1` oraz `group`.
+Przed wykonaniem analizy zmień nazwy zmiennych, odpowiednio `pretest=t1` oraz `posttest=t3`.
+
+```{r}
+library(tidyverse)
+library(datarium)
+library(broom)
+head(anxiety)
+```
+
+```{r}
+dane <- anxiety %>% 
+  select(group, t1, t3) %>% 
+  rename(posttest = t3,
+         pretest = t1)
+names(dane)
+```
+
+### Wykres zależności pomiędzy pretest i posttest w podziale na grupy
+
+```{r}
+dane %>% 
+  ggplot(aes(x = pretest,
+             y = posttest,
+             color = group))+
+  geom_point()+
+  geom_smooth(method = lm,
+              se=F)
+```
+
+Na podstawie wykresu można przypuszczać, że wynik zaniepokojenia zmierzony w`pretest` ma istotny wpływ na wynik końcowy tej zmiennej `posttest`. Jednocześnie widać, że zmienna grupująca `group` ma istotny wpływ na średni poziom zaniepokojenia. Nie występuje natomiast efekt interakcji ponieważ linie regresji są niemal równoległe.
+
+### Test jednorodności wariancji
+
+```{r}
+library(car)
+leveneTest(posttest~group, data = dane, center = mean)
+```
+
+Test Levene'a potwierdza jednorodność wariancji w grupach.
+
+### Test normalności 
+
+```{r}
+mod <- lm(posttest~pretest*group, data = dane)
+plot(mod, which = 2)
+shapiro.test(resid(mod))
+```
+
+Zarówno wykres kwantylowy, jak i test Shapiro-Wilka potwierdzają normalność błędu modelu, a co za tym idzie normalność w podgrupach zmiennj zależnej.
+
+### Wielkości efektów
+
+```{r}
+anova(mod)
+```
+
+Efekt interakcji jest faktycznie nieistotny, zatem wyrzucamy go z modelu.
+
+```{r}
+mod2 <- update(mod, .~.-pretest:group)
+anova(mod2)
+anova(mod, mod2)
+```
+
+Porównanie modelu z interakcją z modelem bez interakcji pokazuje, że modele te nie różnią się istotnie, zatem usunięcie efektu interakcji jest zasadne. Po usunięciu efektu interakcji wszystkie efekty są istotne.
+
+```{r}
+summary(mod2)
+```
+
+## Zadanie 2
+
+Na podstawie danych ze zbioru `corrosion` pakietu `faraway` zbuduj model regresji.
+
+```{r}
+library(faraway)
+head(corrosion)
+```
+
+```{r}
+corrosion %>% 
+  ggplot(aes(Fe, loss))+
+  geom_point()+
+  geom_smooth(method = lm,
+              se=F)
+```
+
+### Budowa modelu
+
+```{r}
+mod <- lm(loss~Fe, data = corrosion)
+summary(mod)
+```
+
+### Diagnostyka modelu
+
+```{r}
+library(ggfortify)
+autoplot(mod)
+```
+
+Wykres Residulas vs Fitted pokazuje, że specyfikacja modelu jest raczej niepoprawna.
+
+```{r}
+library(lmtest)
+dwtest(mod, order.by = ~fitted(mod))
+bgtest(mod, order = 3, order.by = ~fitted(mod))
+bptest(mod)
+gqtest(mod, order.by = ~fitted(mod))
+hmctest(mod, order.by = ~fitted(mod))
+resettest(mod, power = 3)
+raintest(mod, order.by = ~fitted(mod))
+```
+
+Wpradzie testy jednorodności wariancji oraz seryjnej korelacji nie wykryły niespełnienia założeń ale test liniowej postaci zależności wykazuje, że model nie jest liniowy.
+
+```{r}
+corrosion %>% 
+  ggplot(aes(Fe, loss))+
+  geom_point()+
+  geom_smooth(color = "red",method = lm, se=F)+
+  geom_smooth(color = "blue", method = lm, se = F,
+              formula = y~poly(x,2))+
+  geom_smooth(color = "black", method = lm, se = F,
+              formula = y~poly(x,3))
+```
+
+```{r}
+mod2 <- update(mod, .~.+I(Fe^2))
+anova(mod, mod2)
+mod3 <- update(mod2, .~.+I(Fe^3))
+anova(mod, mod2, mod3)
+```
+
+Właściwy wydaje się model sześcienny
+
+```{r}
+summary(mod3)
+```
+
+```{r}
+autoplot(mod3)
+```
+
+
+```{r}
+shapiro.test(resid(mod3))
+bptest(mod3)
+gqtest(mod3, order.by = ~fitted(mod3))
+hmctest(mod3, order.by = ~fitted(mod3))
+dwtest(mod3, order.by = ~fitted(mod3))
+bgtest(mod3, order = 3, order.by = ~fitted(mod3))
+resettest(mod3, power = 5)
+raintest(mod3, order.by = ~fitted(mod3))
+```
+
+```{r}
+mod4 <- lm(loss~poly(Fe, 4, raw = T), data = corrosion)
+anova(mod3, mod4)
+```
+
