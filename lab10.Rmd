@@ -1,0 +1,145 @@
+---
+title: "lab10"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR)
+head(College)
+College$Private <- as.integer(College$Private)-1
+mod <- glm(Private~., data = College, family = binomial("logit")) #uogólniona regresja liniowa, binomial(ocenia rozkład zmiennej wynikowej) najczęsciej logit (jest domyślne) (definiuje funkcję łączącą)
+summary(mod)
+```
+
+Ponieważ zmienna `Private` przyjmowała wartości `No` i `Yes` to została przekodowana na 0 i 1. Następnie został zbudowany model pełny, czyli zawierający wszystkie możliwe predyktory.
+
+Null Deviance - model null (tylko z wyrazem wolnym), różnica między modelem pustym a modelem ze wszystkimi zmiennymi które wzięliśmy. U nas 910 jest całkiem duża, model raczej dobrze dopasowany
+
+Null       (null deviance)  <-  nasz model  ->  (residual deviance)     Saturated(nasycony, najlepszy, się go nie osiąga)
+
+Na podstawie statystyki `Null Deviance` możemy sądzić, że model jest poprawnie dopasowany, ponieważ wartość tej statystyki jest stosunkowo duża. Statystyka `Residual deviance` pokazuje nam, że nasz model nie dopasowuje się idealnie do danych.
+
+Zmienna `Apps` ma ujemny estimate, więc jest ograniczająca. Ogranicza wystąpienie 1 w zmiennej Private (ogranicza sukces). Wzrost `Apps` powoduje ograniczenie wystąpienia 1. Analogicznie wzrost `F.Undergrad` zmniejsza prawdopodobieństwo że uczelnia jest prywatna. `Outstate` ma wpływ stymulujący - im więcej, tym większe prawdopodobieństwo że zmienna jest prywatna. `PhD` ograniczająca. `perc.alumni` stymulujący.
+
+```{r}
+exp(coef(mod)) #exponens bo wcześniej był log
+```
+
+estimate musi być >0 żeby był stymulujący, tzn jego exponens musi być >1
+
+Interpretujemy exponensy
+`perc.alumni` 1.048
+jeśli zwiększy się o 1 jednostkę, to szansa, że szkoła jest prywatna, wzrośnie o 4.8 % (to, co przekracza 1 w exponensie)
+
+`phD` mniejszy od 1, więc ogranicza.
+jeśli zwiększy się o 1 jednostkę, to szanse, że szkoła jest prywatna, zmaleją o 5.85% (dopełnienie do 1)
+
+
+Spośród wszystkich predyktorów użytych w modelu tylko `Apps`, `F.Undergrad`, `Outstate`, `PhD`, `perc.alumni` są zmiennymi niezależnymi istotnie różnicującymi zmienną zależną. Wpływ stymulujący mają zmienne `Outstate`, `perc.alumni`, co oznacza, że wzrost wartości tych zmiennych powoduje zwiększenie prawdopodobieństwa, że zmienna wynikowa przyjmie wartość 1, czyli szkoła jest prywatna. Pozostałe zmienne istotne statystycznie mają wpływ ograniczający, czyli ich wzrost wartości towarzyszy zmniejszaniu się prawdopodobieństwa, że zmienna wynikowa przyjmie wartość 1.
+
+```{r}
+mod0 <- glm(Private~1, data = College, family = binomial())
+mod1 <- step(mod, scope = list(upper = mod, lower = mod0), direction = "both")
+anova(mod0, mod1, test = "Chisq")
+anova(mod, mod1, test = "Chisq")
+summary(mod1)
+exp(coef(mod1))
+```
+
+Wzrost wartości cechy `perc.alumni` o jedną jednostkę, czyli o 1%, powoduje, że szanse na to, że będzie to szkoła prywatna, wzrosną o 5.6%.
+Jeśli odsetek doktorów na danej uczelni wzrośnie o 1%, to szanse na to, że będzie to szkoła prywatna, zmaleją o 5.6%.
+
+
+## Zadanie 2
+
+```{r}
+library(rio)
+MichelinFood <- import("MichelinFood.txt")
+MichelinNY <- import("MichelinNY.csv")
+#wczytujemy MichelinFood i MichelinNY 
+mod <- glm(cbind(InMichelin, NotInMichelin)~Food, data = MichelinFood, family = binomial())
+
+anova(mod, test = "Chisq") #lepszy niż pusty
+summary(mod)
+#raczej dobrze dopasowany niż źle
+exp(coef(mod))
+```
+
+Model estymowany jest statystycznie lepszy niż model składający się jedynie z wyrazu wolnego. Oba jego parametry są istotne statystycznie.
+Wzrost `Food` o 1 jednostkę powoduje, że szanse na to, że restauracja jest w katalogu Michelin wzrastają o 1.
+
+## Zadanie 3
+
+Oszacować InMichelin na podstawie Food, Decor, Service, Price.
+
+```{r}
+mod_full <- glm(InMichelin~Food+Decor+Service+Price, data = MichelinNY, family = binomial())
+anova(mod_full, test = "Chisq")
+mod_null <- glm(InMichelin~1, data = MichelinNY, family = binomial())
+mod <- step(mod_full, scope = list(upper = mod_full, lower = mod_null), direction = "both")
+anova(mod_null, mod, test = "Chisq")
+anova(mod_full, mod, test = "Chisq")
+summary(mod)
+exp(coef(mod))
+```
+
+- Jeżeli `Food` wzrośnie o 1, to szanse, że jest w katalogu Michelin wzrosną o 54%
+
+- Jeżeli `Service` wzrośnie o 1, to szanse, że jest w katalogu Michelin zmaleją o 18% (ale `Service` właściwie jest nieistony statystycznie...)
+
+- Jeżeli `Price` wzrośnie o 1, to szanse, że jest w katalogu Michelin wzrosną o 12%
+
+
+### Predykcja
+
+Restauracja chce się dowiedzieć czy ma szansę na gwiazdkę Michelin.
+
+```{r}
+data_pred <- data.frame(Food = 15, Decor = 28, Service = 28, Price = 33)
+pred <- predict(mod, newdata = data_pred, type = "response")
+pred #prawdopodobieństwo, że dostanie gwiazkę Michelin
+```
+
+Szansa, że ta restauracja dostanie Michelin jest 0.2%
+
+
+Teraz zbudujemy model w oparciu o zbiór uczący i sprawdzimy go na zbiorze testowym. Przyjmiemy, że 70% danych stanowią dane uczące, a 30% testowe.
+
+```{r}
+set.seed(2020)
+ind <- sample(nrow(MichelinNY), size = 0.7*nrow(MichelinNY))
+pr_ucz <- MichelinNY[ind, ]
+pr_test <- MichelinNY[-ind, ]
+```
+
+```{r}
+mod <- glm(InMichelin~Food+Service+Price, data = pr_ucz, family = binomial())
+summary(mod)
+```
+
+```{r}
+pred <- predict(mod, newdata = pr_test, type = "response")
+gwiazdka <- ifelse(pred<0.5, 0, 1)
+tab <- table(obs = pr_test$InMichelin, pre = gwiazdka)
+sum(diag(prop.table(tab))) #w 78% było poprawnie
+```
+
+```{r}
+library(plotROC)
+
+#p <-  ggplot(pr_test, aes = (d = InMichelin, m = pred))+
+#  geom_roc(n.cuts = 0)
+#p - pole pod krzywą ma być jak największe
+#jak leci po przekątnej to do dupy
+#calc_auc(p)
+```
+
