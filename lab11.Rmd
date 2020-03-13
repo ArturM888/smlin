@@ -1,0 +1,131 @@
+---
+title: "lab11"
+author: "Artur Moczybroda"
+date: "28 01 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Zadanie 1
+
+```{r}
+library(tidyverse)
+library(lmtest)
+library(rio)
+dane <- import("nyc.csv")
+head(dane)
+glimpse(dane)
+```
+
+```{r}
+dane$East <- as.factor(dane$East)
+```
+
+Dla sprawdzenia rozkładów poszczególnych zmiennych robimy
+
+```{r}
+dane %>% 
+  pivot_longer(cols = Price:Service,
+               names_to = "Zmienne",
+               values_to = "Wartości") %>% 
+  ggplot(aes(x = Zmienne, y = Wartości, fill = Zmienne))+
+  geom_boxplot()
+
+dane %>% 
+  select(Price:Service) %>% 
+  gather(key = "Zmienne",
+         value = "Wartości") %>% 
+  ggplot(aes(x = Zmienne, y = Wartości, fill = Zmienne))+
+  geom_boxplot()
+```
+
+Zmienne raczej mają charakter symetryczny w sensie rozkładów.
+
+```{r}
+mod <- lm(Price~(Decor+Food+Service)*East, data = dane)
+summary.aov(mod)
+summary(mod)
+```
+
+## Zadanie 2
+```{r}
+dane2 <- import("Latour.txt")
+head(dane2)
+glimpse(dane2)
+dane2$Rain <- as.factor(dane2$Rain)
+mod <- lm(Quality~EndofHarvest*Rain, dane2)
+summary.aov(mod)
+```
+
+Zarówno efekty brzegowe zmiennych `EndofHarvest` i `Rain` są istotne statystycznie, jaki i efekt ich interakcji.
+
+```{r}
+stargazer::stargazer(mod, type = "text")
+```
+
+Współczynnik determinacji modelu wskazuje, że 68.5% wariancji zmiennej Quality da się wyjaśnić przez zmienność modelu. Biorąc pod uwagę skorygowany współczynnik determinacji ten procent wynosi 66%. Błąd standardowy estymacji wynosi 0.758 i jest niewielki ponieważ współczynnik zmienności obliczony na jego podstawie wynosi prawie 25%. Statystyka F wynosi 28.97 i jest istotna statystycznie, czyli co najmniej jeden efekt badany w modelu jest istotny.
+
+Wyraz wolny w modelu (czyli Intercept) dla grupy Rain=0 wynosi 5.16. Efekt końca zbiorów w grupie Rain=0 wynosi -0.03 i jest na granicy istotności statystycznej. Efekt zmiennej Rain jest nieistotny, czyli przecięcia linii regresji w obu grupach są na zbliżonym poziomie. Efekt interakcji jest istotny statystycznie i ozancza, że pomiędzy grupami Rain=0 i Rain=1 istnieje różnica nachyleń liniii regresji o 0.08.
+
+```{r}
+ggplot(dane2, aes(x = EndofHarvest, y = Quality, color = Rain))+
+  geom_point()+
+  geom_smooth(method = lm, 
+              se = F, 
+              fullrange = T)+
+  xlim(c(0,60))
+```
+
+## Sprawedzenie założeń
+
+```{r}
+plot(mod)
+```
+
+
+Wykres Residual vs Fitted nie wykazuje heterogeniczności i autokorelacji reszt. Wykres kwantylowy nie wykazuje odchyłek od normalności. Wykres Scale-Location nie pozwala na jednoznaczne wskazanie heterogeniczności wariancji. Wykres Residuals vs Leverage pokazuje jeden punkt, którego reszty standaryzowane są nieznacznie mniejsze od -2 ale punkt ten nie ma dużej dźwigni. Są też punkty których dźwignia jest większa ale nie są punktami wpływowymi. Nie istnieją podstawy do usunięcia punktów pomiarowych.
+
+```{r}
+shapiro.test(resid(mod))
+```
+
+
+Test Shapiro-Wilka potwierdza brak odchyłki rozkładu reszt od normalności.
+
+```{r}
+bptest(mod)
+gqtest(mod, order.by = fitted(mod))
+hmctest(mod, order.by = fitted(mod))
+```
+
+Wszystie trzy powyższe testy nie dają podstaw do odrzucenia hipotezy o homogeniczności wariancji reszt.
+
+```{r}
+dwtest(mod, order.by = fitted(mod))
+bgtest(mod, order.by = fitted(mod), order = 3)
+```
+
+
+Oba testy nie dają podstaw do odrzucenia hipotezy o braku seryjnej korelacji reszt.
+
+
+```{r}
+raintest(mod, order.by = fitted(mod))
+resettest(mod, order.by = fitted(mod))
+```
+
+Powyższe testy nie dają podstaw do odrzucenia hipotezy o liniowym charakterze zależności.
+
+## Predykcja
+Predykcja dla Quality po mięsiącu po 31 sierpnia, podczas gdy padało w czasie zbiorów.
+
+```{r}
+data.pred <- data.frame(EndofHarvest = 30, Rain = "1")
+pred <- predict(mod, newdata = data.pred)
+pred
+```
+
+
